@@ -8,8 +8,7 @@ A simple tool to spawn multiple SSH services via docker.
 ## Usage
 Note: You need to run as root or a user that can run docker commands
 ```
-# python3 ssh-farm.py -h
-usage: ssh-farm.py ( -f config.csv [ -d ] [ -c sshd_config_base ] [ -w /path/to/a/writable/working/directory ] | -o sshd_config_base.txt )
+usage: ssh-farm.py ( -f config.csv [ -d ] [ -C credentials.txt ] [ -t trusts.txt] [ -c sshd_config_base ] [ -w /path/to/a/writable/working/directory ] | -o sshd_config_base.txt )
 
 Create lots of docker containers running sshd
 
@@ -19,19 +18,20 @@ options:
                         CSV file containing configuration
   -c SSHDBASECONFIG, --sshdbaseconfig SSHDBASECONFIG
                         sshd_config file to use as base
-  -w DIRECTORY, --directory DIRECTORY
-                        Working directory for tmp files (mainly for debugging)
   -d, --delete          Delete all containers named ssh_farm_*
-  -t TIMEZONE, --timezone TIMEZONE
+  -T TIMEZONE, --timezone TIMEZONE
                         Timezone for containers.  Default is Etc/UTC
   -P SSH_PORT, --ssh_port SSH_PORT
                         SSH port for containers.  Default is 22
-  -s SUDO_ACCESS, --sudo_access SUDO_ACCESS
-                        Sudo access for containers.  Default is false
-  -p PASSWORD_ACCESS, --password_access PASSWORD_ACCESS
-                        Password access for containers.  Default is true
+  -t TRUSTS, --trusts TRUSTS
+                        CSV file containing SSH key trusts.  Columns: src_host,src_user,dst_host,dst_user,known_hosts_clue.  Default is none
+  -N, --no_clean_up     Do not cleanup tmp files.  Default is False
+  -n PREFIX, --prefix PREFIX
+                        Prefix for docker container name.  Default is ssh_farm_
+  -C CREDS, --creds CREDS
+                        CSV file containing OS usernames and passwords.  Columns: ID,username,password,sudo. Default is none
   -x PROBLEM, --problem PROBLEM
-                        Create extra sshd's that are harder to connect to.  List one or more of ciphers,kex,hostkey.  Default is none 
+                        Create extra sshd's that are harder to connect to.  List one or more of ciphers,kex,hostkey.  Default is none
   -i DOCKER_IMAGE, --docker_image DOCKER_IMAGE
                         Docker image to use for containers.  Default is linuxserver/openssh-server:version-9.3_p2-r0
   -o OUTPUTSSHDCONFIG, --outputsshdconfig OUTPUTSSHDCONFIG
@@ -43,32 +43,29 @@ ssh-farm.py -o sshd_config_base.txt # output the base sshd_config file from the 
 
 Example 2 (Generic Use Case): 
 
-ssh-farm.py -f config.csv -c sshd_config_base.txt # Start containers described in the CSV file.
+ssh-farm.py -d -f config-example1.csv -C creds-example1.csv -c sshd_config_base.txt # Start containers described in the CSV file.
 
-Example 3 (Use Case #1):
-
-ssh-farm.py -f config.csv -x ciphers,kex,hostkey # Start difficult-to-connect-to variations of the containers described in the CSV file.  These variations will have problematic ciphers, key exchange, and hostkey settings that are not supported by default in modern SSH clients.
-
-Example 4 (Use Case #2):
-
-ssh-farm.py -f config.csv -t trusts.csv -C creds.txt # Start hacker challenge containers based on the CSV files.
-
-config.csv is expected to have the following columns:
+config.csv is expected to have the following columns (also see config-example*.csv files):
 * required: ID
-* optional: ssh_port,password_access,docker_image,any sshd_config setting, e.g. PermitRootLogin
+* optional: ssh_port,docker_image,any sshd_config setting, e.g. PermitRootLogin
+
+creds.csv is expected to have the following columns:
+* required: ID,username,password
+* optional: sudo,hash_type
+
+hash_type must be one of: DES, MD5, SHA256, SHD512, "" (empty string - for default: MD5)
+
+Example 3 (Use Case: Testing if SSH tools/clients can connect to servers that have been configured with problematic ciphers, key exchange, and hostkey settings):
+
+ssh-farm.py -d -f config-example1.csv -x ciphers,kex,hostkey
+
+Example 4 (Use Case: Creating a hacker challenge):
+
+ssh-farm.py -N -d -f config-challenge1.csv -C creds-challenge1.csv -t trusts-challenge1.csv
 
 trusts.csv is expected to have the following columns:
 * required: src_host,src_user,dst_host,dst_user,known_hosts_clue
 * optional: N/A
-
-creds.csv is expected to have the following columns:
-* required: ID,username,password,sudo,hash_type
-* optional: N/A
-
-Also see example CSV files.
-
-True/False fields like sudo, password_access, etc. can be set to 1/0, true/false, yes/no.
-hash_type must be one of: DES, MD5, SHA256, SHD512, "" (empty string - for default: MD5)
 
 IMPORTANT: Before you run ssh_farm for the first time, pull down the openssh-server docker image:
 # docker pull linuxserver/openssh-server:version-9.3_p2-r0
@@ -76,7 +73,7 @@ IMPORTANT: Before you run ssh_farm for the first time, pull down the openssh-ser
 
 # Example of Use Case #1: Testing Medusa's ability to guess SSH passwords
 
-If [medusa](https://en.kali.tools/?p=200) gives us a negative result (i.e. tells us that a password isn't valid), is that because the password is actually wrong, or is it because medusa is failing to connect to the SSH server?  ssh_farm can help us answer that question.
+If medusa gives us a negative result (i.e. tells us that a password isn't valid), is that because the password is actually wrong, or is it because medusa is failing to connect to the SSH server?  ssh_farm can help us answer that question.
 
 First we define how our base openssh server should be configured using a CSV file:
 ```
@@ -170,7 +167,7 @@ So on these particular test cases, medusa worked perfectly.  If there are other 
 
 # Another example of Use Case #1: Testing Hydra's ability to guess SSH passwords
 
-Use the same setup as for medusa above, but run [hydra](https://www.kali.org/tools/hydra/) instead this time:
+Use the same setup as for medusa above, but run hydra instead this time:
 ```
 # hydra -M ips.txt -l test1 -p password1  ssh
 Hydra v9.4 (c) 2022 by van Hauser/THC & David Maciejak - Please do not use in military or secret service organizations, or for illegal purposes (this is non-binding, these *** ignore laws and ethics anyway).
@@ -208,7 +205,7 @@ Host *
 
 We'll set up 5 containers running sshd.  We specify the account that will exist on each using `creds.txt`and the trust relationships that should be set up on each using `trusts.csv`.  We'll also specify the base sshd_config file to use using `trusts.csv`.  Here, trusts refers to authorized_keys.  ssh_farm will optionally create a corresponding known_hosts file for the target system if desired.
 ```
-# cat config.csv # minimal config.  No port or other parameters need be specified. 
+# cat config-challenge1.csv # minimal config.  No port or other parameters need be specified. 
 ID
 1
 2
@@ -216,7 +213,7 @@ ID
 4
 5
 
-# cat creds.txt # Some users have sudo rights; some don't.  Some have different password hashes.
+# cat creds-challenge1.csv # Some users have sudo rights; some don't.  Some have different password hashes.
 ID,username,password,sudo,hash_type
 1,user0,password,yes,
 1,user1,Password1,no,DES
@@ -224,12 +221,121 @@ ID,username,password,sudo,hash_type
 1,user2,Password,no,SHA256
 5,user3,user3,no,SHA512
 
-# cat trusts.csv # Pairs of host/users can that id_rsa/authorized_keys pairs set up. 
+# cat trusts-challenge1.csv # Pairs of host/users can that id_rsa/authorized_keys pairs set up. 
 src_host,src_user,dst_host,dst_user,known_hosts_clue
 1,user2,3,user2,plain
 3,user2,4,user3,no
 ```
 Note that known_hosts_clue can be `plain`, `hashed` or `no`.
+
+```
+# ssh-farm.py -N -d -f config-challenge1.csv -C creds-challenge1.csv -t trusts-challenge1.csv
+[*] Global settings:
+  [i] timezone (-t): Etc/UTC
+  [i] ssh_port (-P): 22
+  [i] container_prefix (-n): ssh_farm_
+  [i] docker_image (-i): linuxserver/openssh-server:version-9.3_p2-r0
+  [i] no_clean_up (-N): True
+  [i] working_directory: /tmp/ssh_farm_vhuf_sul
+
+[*] Deleting old ssh_farm containers (-d)
+  [-] Deleting container: ssh_farm_5
+  [-] Deleting container: ssh_farm_4
+  [-] Deleting container: ssh_farm_3
+  [-] Deleting container: ssh_farm_2
+  [-] Deleting container: ssh_farm_1
+
+[+] No base sshd_config supplied (-c).  Getting sshd_config from docker container.  Use -o to save to file.
+  [+] Starting container: ssh_farm_base
+  [-] Deleting container: ssh_farm_base
+  [+] Got sshd_config from docker container 117 lines
+
+[+] Reading farm config: config-challenge1.csv
+  [+] Created 5 container objects
+
+[+] Reading trusts config: trusts-challenge1.csv
+  [+] Creating user/credential objects on container ssh_farm_1: user2, None, None
+  [+] Creating user/credential objects on container ssh_farm_3: user2, None, None
+  [+] Creating user/credential objects on container ssh_farm_3: user2, None, None
+  [+] Creating user/credential objects on container ssh_farm_4: user3, None, None
+
+[+] Reading creds config: creds-challenge1.csv
+  [+] Creating user/credential objects on container ssh_farm_1: user0, password, None
+  [+] Creating user/credential objects on container ssh_farm_1: user1, Password1, None
+  [+] Creating user/credential objects on container ssh_farm_2: user1, Password1, None
+  [+] Creating user/credential objects on container ssh_farm_1: user2, Password, None
+  [+] Creating user/credential objects on container ssh_farm_5: user3, user3, None
+
+[+] Creating problem containers (-x)
+  [+] No problems defined for ssh_farm_1
+  [+] No problems defined for ssh_farm_2
+  [+] No problems defined for ssh_farm_3
+  [+] No problems defined for ssh_farm_4
+  [+] No problems defined for ssh_farm_5
+
+[+] Starting containers
+  [+] Starting container: ssh_farm_1
+  [+] Starting container: ssh_farm_2
+  [+] Starting container: ssh_farm_3
+  [+] Starting container: ssh_farm_4
+  [+] Starting container: ssh_farm_5
+
+[+] Configuring SSH Key Trusts
+  [D] Created public key on ssh_farm_3: -rw------- 1 user2 user2 560 Aug  2 15:10 /home/user2/.ssh/authorized_keys
+  [D] Created private key on ssh_farm_1: -rw------- 1 user2 user2 2590 Aug  2 15:10 /home/user2/.ssh/id_rsa
+  [D] Added ssh_farm_3 (172.17.0.4) to ssh_farm_1 ~user2/.ssh/known_hosts
+  [D] Created public key on ssh_farm_4: -rw------- 1 user3 user3 560 Aug  2 15:10 /home/user3/.ssh/authorized_keys
+  [D] Created private key on ssh_farm_3: -rw------- 1 user2 user2 2590 Aug  2 15:10 /home/user2/.ssh/id_rsa
+
+[+] Containers in /etc/hosts format (copy saved in: /tmp/ssh_farm_vhuf_sul/hosts)
+172.17.0.2	ssh_farm_1
+172.17.0.3	ssh_farm_2
+172.17.0.4	ssh_farm_3
+172.17.0.5	ssh_farm_4
+172.17.0.6	ssh_farm_5
+
+[+] Container IPs (copy saved in: /tmp/ssh_farm_vhuf_sul/ips.txt)
+172.17.0.2
+172.17.0.3
+172.17.0.4
+172.17.0.5
+172.17.0.6
+
+[+] Clear known_hosts
+ssh-keygen -R 172.17.0.2
+ssh-keygen -R 172.17.0.3
+ssh-keygen -R 172.17.0.4
+ssh-keygen -R 172.17.0.5
+ssh-keygen -R 172.17.0.6
+
+[*] Saving config to: /tmp/ssh_farm_vhuf_sul/ssh_farm.json (disable with -N)
+
+[*] Skipping clean up of working directory (-N): /tmp/ssh_farm_vhuf_sul
+```
+
+Start the challenge:
+```
+ssh user0@172.17.0.2 # ssh_farm_1: password is user0
+```
+
+This simple challenge covers familiar concepts such as:
+* Guessing passwords (e.g. with medusa)
+* Predicting that usernames are likely to be
+* Reuse of user:pass combos on other hosts
+* Cracking passwords from /etc/shadow (different hash formats used)
+* Use private SSH keys to access other hosts when guided by known_hosts
+* Unguided use of private SSH keys (against other usernames)
+
+There are a few other concepts that could easily be added to this challenge:
+* scan for SSH servers on non-default ports
+* connect to problem SSH services (e.g. those using old ciphers - see above)
+* reuse of pass on different accounts
+
+A few ideas that haven't been implemented by ssh_farm:
+* Use of shosts.
+* Exposing passwords in files other than /etc/shadow?  
+* Allowing non-trivial abuse of sudo to get root / read the shadow file.
+* Requiring users to pivot by restricting source IPs that can log in to some SSH servers
 
 # Risks and Limitations
 
@@ -244,6 +350,8 @@ The -d option deletes all docker images named ssh_farm_*.  Hopefully that doesn'
 It would be pretty easy to start a huge number of docker containers using this script - and there's no limit or sanity check.  This could use up all the resources on your system and cause it to crash.  So be careful.
 
 You'll probably find that it's possible to use older version of OpenSSH from https://hub.docker.com/r/linuxserver/openssh-server/tags.  However, as you try older and older versions, eventually the name of the daemon changes from `sshd.pam` to `sshd`s, which will break ssh_farm.  Pull request appreciated.  The oldest tag is from 2019 for OpenSSH 8.1.  The current version (as of July 2023) is OpenSSH 9.3.
+
+Be cautious about blindly accepting hacker challenge CSV files from someone else.  This code has to run as root and there is plenty of scope for accidental command injection vulnerabilities as data from the CSV files is passed through to OS commands.  Also DoS risks.  At least eyeball CSV files sent to you by other people. 
 
 # Credits and Dependencies
 
