@@ -1,0 +1,3 @@
+src_host,src_user,dst_host,dst_user,known_hosts_clue
+1,user2,3,user2,plain
+3,user2,4,user3,no
