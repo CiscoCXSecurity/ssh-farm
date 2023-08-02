@@ -1,0 +1,6 @@
+ID,username,password,sudo,hash_type
+1,user0,password,yes,
+1,user1,Password1,no,DES
+2,user1,Password1,no,MD5
+1,user2,Password,no,SHA256
+5,user3,user3,no,SHA512
