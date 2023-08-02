@@ -73,7 +73,7 @@ IMPORTANT: Before you run ssh_farm for the first time, pull down the openssh-ser
 
 # Example of Use Case #1: Testing Medusa's ability to guess SSH passwords
 
-If medusa gives us a negative result (i.e. tells us that a password isn't valid), is that because the password is actually wrong, or is it because medusa is failing to connect to the SSH server?  ssh_farm can help us answer that question.
+If [medusa](https://en.kali.tools/?p=200) gives us a negative result (i.e. tells us that a password isn't valid), is that because the password is actually wrong, or is it because medusa is failing to connect to the SSH server?  ssh_farm can help us answer that question.
 
 First we define how our base openssh server should be configured using a CSV file:
 ```
@@ -167,7 +167,7 @@ So on these particular test cases, medusa worked perfectly.  If there are other 
 
 # Another example of Use Case #1: Testing Hydra's ability to guess SSH passwords
 
-Use the same setup as for medusa above, but run hydra instead this time:
+Use the same setup as for medusa above, but run [hydra](https://www.kali.org/tools/hydra/) instead this time:
 ```
 # hydra -M ips.txt -l test1 -p password1  ssh
 Hydra v9.4 (c) 2022 by van Hauser/THC & David Maciejak - Please do not use in military or secret service organizations, or for illegal purposes (this is non-binding, these *** ignore laws and ethics anyway).
